@@ -302,8 +302,8 @@ textarea {
     color: var(--text-tertiary);
 }
 
-/* Status Button */
-.status-button {
+/* Status Badge */
+.status-badge {
     padding: 6px 12px;
     border-radius: var(--radius-full);
     font-size: var(--font-size-small);
@@ -312,14 +312,15 @@ textarea {
     align-items: center;
     gap: 6px;
     transition: all 0.2s ease;
+    user-select: none;
 }
 
-.status-button.standby {
+.status-badge.standby {
     background: var(--status-standby);
     color: var(--status-standby-text);
 }
 
-.status-button.ready {
+.status-badge.ready {
     background: var(--status-ready);
     color: white;
 }

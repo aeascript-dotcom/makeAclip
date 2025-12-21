@@ -7,8 +7,7 @@ const appState = {
         id: index + 1,
         image: null,
         imagePreview: null,
-        text: '',
-        status: 'standby' // 'standby' | 'ready'
+        text: ''
     })),
     settings: {
         transition: 'slideIn',
@@ -58,10 +57,14 @@ function createSlideElement(slide, index) {
     slideDiv.className = 'slide-block';
     slideDiv.dataset.index = index;
     
+    const isReady = slide.imagePreview && slide.text.trim();
+    const statusClass = isReady ? 'ready' : 'standby';
+    const statusText = isReady ? 'Ready' : 'Stand By';
+
     slideDiv.innerHTML = `
         <div class="image-slot">
             <div class="slide-number">#${slide.id}</div>
-            <div class="image-preview ${slide.imagePreview ? 'has-image' : ''}" data-index="${index}">
+            <div class="image-preview ${slide.imagePreview ? 'has-image' : ''}" id="preview-${index}">
                 ${slide.imagePreview 
                     ? `<img src="${slide.imagePreview}" alt="Slide ${slide.id}" class="preview-image">` 
                     : '<span class="image-placeholder">📷</span>'}
@@ -72,7 +75,7 @@ function createSlideElement(slide, index) {
                 accept="image/*" 
                 style="display: none;"
                 data-index="${index}">
-            <button class="upload-button" data-index="${index}">
+            <button class="upload-button" id="uploadBtn-${index}" data-index="${index}">
                 ${slide.imagePreview ? 'เปลี่ยนรูป' : 'อัปโหลดรูป'}
             </button>
         </div>
@@ -87,17 +90,56 @@ function createSlideElement(slide, index) {
             
             <div class="slide-footer">
                 <span class="char-count">
-                    <span class="current-count">${slide.text.length}</span>/200
+                    <span class="current-count" id="charCount-${index}">${slide.text.length}</span>/200
                 </span>
-                <button class="status-button ${slide.status}" data-index="${index}">
+                <div class="status-badge ${statusClass}" id="status-${index}">
                     <span class="status-dot"></span>
-                    ${slide.status === 'standby' ? 'Stand By' : 'Ready'}
-                </button>
+                    <span class="status-text">${statusText}</span>
+                </div>
             </div>
         </div>
     `;
     
     return slideDiv;
+}
+
+function updateSlideUI(index) {
+    const slide = appState.slides[index];
+
+    // Update Image Preview
+    const previewContainer = document.getElementById(`preview-${index}`);
+    const uploadBtn = document.getElementById(`uploadBtn-${index}`);
+
+    if (slide.imagePreview) {
+        previewContainer.classList.add('has-image');
+        previewContainer.innerHTML = `<img src="${slide.imagePreview}" alt="Slide ${slide.id}" class="preview-image">`;
+        uploadBtn.textContent = 'เปลี่ยนรูป';
+    } else {
+        previewContainer.classList.remove('has-image');
+        previewContainer.innerHTML = '<span class="image-placeholder">📷</span>';
+        uploadBtn.textContent = 'อัปโหลดรูป';
+    }
+
+    // Update Char Count
+    const charCount = document.getElementById(`charCount-${index}`);
+    if (charCount) {
+        charCount.textContent = slide.text.length;
+    }
+
+    // Update Status Badge
+    const statusBadge = document.getElementById(`status-${index}`);
+    const statusTextSpan = statusBadge.querySelector('.status-text');
+    const isReady = slide.imagePreview && slide.text.trim();
+
+    if (isReady) {
+        statusBadge.classList.remove('standby');
+        statusBadge.classList.add('ready');
+        statusTextSpan.textContent = 'Ready';
+    } else {
+        statusBadge.classList.remove('ready');
+        statusBadge.classList.add('standby');
+        statusTextSpan.textContent = 'Stand By';
+    }
 }
 
 // ========================================
@@ -111,15 +153,6 @@ function attachEventListeners() {
             const index = parseInt(e.target.dataset.index);
             const fileInput = document.getElementById(`fileInput-${index}`);
             fileInput.click();
-        }
-        
-        // Status button toggle
-        if (e.target.classList.contains('status-button') || e.target.closest('.status-button')) {
-            const button = e.target.classList.contains('status-button') 
-                ? e.target 
-                : e.target.closest('.status-button');
-            const index = parseInt(button.dataset.index);
-            toggleSlideStatus(index);
         }
     });
     
@@ -136,12 +169,8 @@ function attachEventListeners() {
         if (e.target.classList.contains('slide-textarea')) {
             const index = parseInt(e.target.dataset.index);
             const text = e.target.value;
-            updateSlideText(index, text);
-            
-            // Update character count
-            const slideBlock = e.target.closest('.slide-block');
-            const charCount = slideBlock.querySelector('.current-count');
-            charCount.textContent = text.length;
+            appState.slides[index].text = text;
+            updateSlideUI(index);
         }
     });
     
@@ -156,20 +185,17 @@ function attachEventListeners() {
             button.classList.add('active');
             button.setAttribute('aria-checked', 'true');
             appState.settings.transition = button.dataset.value;
-            console.log('Transition set to:', appState.settings.transition);
         });
     });
     
     // Font selector
     fontSelect.addEventListener('change', (e) => {
         appState.settings.font = e.target.value;
-        console.log('Font set to:', appState.settings.font);
     });
     
     // Resolution selector
     resolutionSelect.addEventListener('change', (e) => {
         appState.settings.resolution = e.target.value;
-        console.log('Resolution set to:', appState.settings.resolution);
     });
     
     // Export button
@@ -197,46 +223,15 @@ function handleImageUpload(file, index) {
     reader.onload = (e) => {
         appState.slides[index].image = file;
         appState.slides[index].imagePreview = e.target.result;
-        
-        // Auto-update status if has image and text
-        if (appState.slides[index].text) {
-            appState.slides[index].status = 'ready';
-        }
-        
-        // Re-render this specific slide
-        renderSlides();
-        console.log(`Image uploaded for slide ${index + 1}`);
+        updateSlideUI(index);
     };
     
     reader.readAsDataURL(file);
 }
 
-function updateSlideText(index, text) {
-    appState.slides[index].text = text;
-    
-    // Auto-update status if has both image and text
-    if (appState.slides[index].imagePreview && text.trim()) {
-        appState.slides[index].status = 'ready';
-        renderSlides();
-    }
-}
-
-function toggleSlideStatus(index) {
-    const slide = appState.slides[index];
-    
-    // Only allow ready status if both image and text exist
-    if (!slide.imagePreview || !slide.text.trim()) {
-        alert('กรุณาเพิ่มรูปภาพและข้อความก่อน');
-        return;
-    }
-    
-    slide.status = slide.status === 'standby' ? 'ready' : 'standby';
-    renderSlides();
-}
-
 function handleExport() {
     // Validate at least one slide is ready
-    const readySlides = appState.slides.filter(slide => slide.status === 'ready');
+    const readySlides = appState.slides.filter(slide => slide.imagePreview && slide.text.trim());
     
     if (readySlides.length === 0) {
         alert('กรุณาเตรียมสไลด์อย่างน้อย 1 สไลด์ให้พร้อม (มีรูปและข้อความ)');
@@ -250,11 +245,10 @@ function handleExport() {
     exportDefault.classList.remove('active');
     exportLoading.classList.add('active');
     
-    // Simulate export process (replace with actual implementation later)
+    // Simulate export process
     setTimeout(() => {
         exportLoading.classList.remove('active');
         exportSuccess.classList.add('active');
-        console.log('✅ Export completed!');
     }, 3000);
 }
 
@@ -264,8 +258,7 @@ function resetApp() {
         id: index + 1,
         image: null,
         imagePreview: null,
-        text: '',
-        status: 'standby'
+        text: ''
     }));
     
     // Reset UI
@@ -275,8 +268,6 @@ function resetApp() {
     
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    
-    console.log('App reset');
 }
 
 // ========================================
@@ -284,22 +275,3 @@ function resetApp() {
 // ========================================
 
 document.addEventListener('DOMContentLoaded', init);
-
-// ========================================
-// Utility Functions
-// ========================================
-
-// Get current app state (useful for debugging)
-function getState() {
-    return appState;
-}
-
-// Export for console debugging
-window.makeAclip = {
-    getState,
-    resetApp
-};
-
-console.log('💡 Debug commands available:');
-console.log('  makeAclip.getState() - View current state');
-console.log('  makeAclip.resetApp() - Reset application');
