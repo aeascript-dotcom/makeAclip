@@ -7,8 +7,8 @@ const appState = {
         id: index + 1,
         image: null,
         imagePreview: null,
-        text: '',
-        status: 'standby' // 'standby' | 'ready'
+        text: ''
+        // Status is derived dynamically: ready = imagePreview && text
     })),
     settings: {
         transition: 'slideIn',
@@ -35,16 +35,16 @@ const resolutionSelect = document.getElementById('resolutionSelect');
 // ========================================
 
 function init() {
-    renderSlides();
+    initSlides();
     attachEventListeners();
     console.log('✨ makeAclip initialized');
 }
 
 // ========================================
-// Render Slides
+// Render Slides (Single Initialization)
 // ========================================
 
-function renderSlides() {
+function initSlides() {
     slidesList.innerHTML = '';
     
     appState.slides.forEach((slide, index) => {
@@ -58,6 +58,8 @@ function createSlideElement(slide, index) {
     slideDiv.className = 'slide-block';
     slideDiv.dataset.index = index;
     
+    const isReady = isSlideReady(slide);
+
     slideDiv.innerHTML = `
         <div class="image-slot">
             <div class="slide-number">#${slide.id}</div>
@@ -89,10 +91,10 @@ function createSlideElement(slide, index) {
                 <span class="char-count">
                     <span class="current-count">${slide.text.length}</span>/200
                 </span>
-                <button class="status-button ${slide.status}" data-index="${index}">
+                <div class="status-button ${isReady ? 'ready' : 'standby'}" data-index="${index}">
                     <span class="status-dot"></span>
-                    ${slide.status === 'standby' ? 'Stand By' : 'Ready'}
-                </button>
+                    <span class="status-text">${isReady ? 'Ready' : 'Stand By'}</span>
+                </div>
             </div>
         </div>
     `;
@@ -101,25 +103,65 @@ function createSlideElement(slide, index) {
 }
 
 // ========================================
+// UI Updates (Targeted)
+// ========================================
+
+function updateSlideImageUI(index) {
+    const slide = appState.slides[index];
+    const slideDiv = slidesList.querySelector(`.slide-block[data-index="${index}"]`);
+    if (!slideDiv) return;
+
+    const previewContainer = slideDiv.querySelector('.image-preview');
+    const uploadBtn = slideDiv.querySelector('.upload-button');
+
+    if (slide.imagePreview) {
+        previewContainer.classList.add('has-image');
+        previewContainer.innerHTML = `<img src="${slide.imagePreview}" alt="Slide ${slide.id}" class="preview-image">`;
+        uploadBtn.textContent = 'เปลี่ยนรูป';
+    } else {
+        previewContainer.classList.remove('has-image');
+        previewContainer.innerHTML = '<span class="image-placeholder">📷</span>';
+        uploadBtn.textContent = 'อัปโหลดรูป';
+    }
+
+    updateSlideStatusUI(index);
+}
+
+function updateSlideStatusUI(index) {
+    const slide = appState.slides[index];
+    const slideDiv = slidesList.querySelector(`.slide-block[data-index="${index}"]`);
+    if (!slideDiv) return;
+
+    const statusBtn = slideDiv.querySelector('.status-button');
+    const statusText = statusBtn.querySelector('.status-text');
+    const isReady = isSlideReady(slide);
+
+    if (isReady) {
+        statusBtn.classList.remove('standby');
+        statusBtn.classList.add('ready');
+        statusText.textContent = 'Ready';
+    } else {
+        statusBtn.classList.remove('ready');
+        statusBtn.classList.add('standby');
+        statusText.textContent = 'Stand By';
+    }
+}
+
+function isSlideReady(slide) {
+    return slide.imagePreview && slide.text.trim().length > 0;
+}
+
+// ========================================
 // Event Listeners
 // ========================================
 
 function attachEventListeners() {
-    // Upload button clicks
+    // Upload button clicks (delegation)
     slidesList.addEventListener('click', (e) => {
         if (e.target.classList.contains('upload-button')) {
             const index = parseInt(e.target.dataset.index);
             const fileInput = document.getElementById(`fileInput-${index}`);
             fileInput.click();
-        }
-        
-        // Status button toggle
-        if (e.target.classList.contains('status-button') || e.target.closest('.status-button')) {
-            const button = e.target.classList.contains('status-button') 
-                ? e.target 
-                : e.target.closest('.status-button');
-            const index = parseInt(button.dataset.index);
-            toggleSlideStatus(index);
         }
     });
     
@@ -136,12 +178,17 @@ function attachEventListeners() {
         if (e.target.classList.contains('slide-textarea')) {
             const index = parseInt(e.target.dataset.index);
             const text = e.target.value;
-            updateSlideText(index, text);
+
+            // Update state
+            appState.slides[index].text = text;
             
             // Update character count
             const slideBlock = e.target.closest('.slide-block');
             const charCount = slideBlock.querySelector('.current-count');
             charCount.textContent = text.length;
+
+            // Update status (without re-rendering)
+            updateSlideStatusUI(index);
         }
     });
     
@@ -198,45 +245,17 @@ function handleImageUpload(file, index) {
         appState.slides[index].image = file;
         appState.slides[index].imagePreview = e.target.result;
         
-        // Auto-update status if has image and text
-        if (appState.slides[index].text) {
-            appState.slides[index].status = 'ready';
-        }
-        
-        // Re-render this specific slide
-        renderSlides();
+        // Update specific DOM elements
+        updateSlideImageUI(index);
         console.log(`Image uploaded for slide ${index + 1}`);
     };
     
     reader.readAsDataURL(file);
 }
 
-function updateSlideText(index, text) {
-    appState.slides[index].text = text;
-    
-    // Auto-update status if has both image and text
-    if (appState.slides[index].imagePreview && text.trim()) {
-        appState.slides[index].status = 'ready';
-        renderSlides();
-    }
-}
-
-function toggleSlideStatus(index) {
-    const slide = appState.slides[index];
-    
-    // Only allow ready status if both image and text exist
-    if (!slide.imagePreview || !slide.text.trim()) {
-        alert('กรุณาเพิ่มรูปภาพและข้อความก่อน');
-        return;
-    }
-    
-    slide.status = slide.status === 'standby' ? 'ready' : 'standby';
-    renderSlides();
-}
-
 function handleExport() {
     // Validate at least one slide is ready
-    const readySlides = appState.slides.filter(slide => slide.status === 'ready');
+    const readySlides = appState.slides.filter(isSlideReady);
     
     if (readySlides.length === 0) {
         alert('กรุณาเตรียมสไลด์อย่างน้อย 1 สไลด์ให้พร้อม (มีรูปและข้อความ)');
@@ -250,7 +269,7 @@ function handleExport() {
     exportDefault.classList.remove('active');
     exportLoading.classList.add('active');
     
-    // Simulate export process (replace with actual implementation later)
+    // Simulate export process
     setTimeout(() => {
         exportLoading.classList.remove('active');
         exportSuccess.classList.add('active');
@@ -264,12 +283,11 @@ function resetApp() {
         id: index + 1,
         image: null,
         imagePreview: null,
-        text: '',
-        status: 'standby'
+        text: ''
     }));
     
     // Reset UI
-    renderSlides();
+    initSlides();
     exportSuccess.classList.remove('active');
     exportDefault.classList.add('active');
     
@@ -299,7 +317,3 @@ window.makeAclip = {
     getState,
     resetApp
 };
-
-console.log('💡 Debug commands available:');
-console.log('  makeAclip.getState() - View current state');
-console.log('  makeAclip.resetApp() - Reset application');
